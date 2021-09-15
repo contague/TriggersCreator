@@ -4,7 +4,7 @@ import TriggersCreator.util.TableProperties;
 
 import java.util.Map;
 
-public class AddTriggerFunction {
+public class InsertTriggerFunctionCreator {
 
     public String createFunction(String tableName, String nameFieldPk){
         TableProperties tableProperties = new TableProperties();
@@ -32,7 +32,7 @@ public class AddTriggerFunction {
         result += "select VALUE_SETUP from SETUP where ID_SETUP=4 into add_in_tism; \n" +
                 "if (add_in_tism='1') then   \n" +
                 "else\n" +
-                "   return; /*не включено логгирование*/\n" +
+                "   return null; /*не включено логгирование*/\n" +
                 "end if; \n";
         if (docType == 3){
             result += "  select VALUE_SETUP from SETUP where ID_SETUP=6 into add_in_tism_reg; \n" +
@@ -119,6 +119,7 @@ public class AddTriggerFunction {
             result=result+"	   \n ";
 
         }
+        result=result+"return new; \n";
         result=result+"end \n" +
                 "$BODY$;" ;
         return result;
