@@ -4,8 +4,7 @@ import TriggersCreator.util.TableProperties;
 
 import java.util.Map;
 
-public class InsertTriggerFunctionCreator {
-
+public class UpdateTriggerFunctionCreator {
     public String createFunction(String tableName, String nameFieldPk){
         TableProperties tableProperties = new TableProperties();
         Map<String, String> fieldsMap = tableProperties.getMapOfColumns(tableName);
@@ -14,7 +13,7 @@ public class InsertTriggerFunctionCreator {
         String nameFieldIdExtDataout = "IDEXT_DOUT_" + tableName;
         String nameFieldIdBase = "IDBASE_" + tableName;
 
-        String result = "CREATE FUNCTION ADD_LOG_" + tableName + "_INS ()\n" +
+        String result = "CREATE FUNCTION ADD_LOG_" + tableName + "_UPD ()\n" +
                 "RETURNS trigger \n" +
 
                 "LANGUAGE 'plpgsql' \n" +
@@ -25,10 +24,12 @@ public class InsertTriggerFunctionCreator {
                 "DECLARE  add_in_tism char ;\n" +
                 "DECLARE  idext_base BIGINT ;\n" +
                 "DECLARE  idext_data_out BIGINT ;\n";
+
         if (docType == 3){
             result += "DECLARE  add_in_tism_reg char ; \n";
         }
         result += "begin\n";
+
         result += "select VALUE_SETUP from SETUP where ID_SETUP=4 into add_in_tism; \n" +
                 "if (add_in_tism='1') then   \n" +
                 "else\n" +
@@ -41,6 +42,14 @@ public class InsertTriggerFunctionCreator {
                     " return;  /*не включено логгирование регистров*/ \n" +
                     "end if;\n";
         }
+        if (tableName.equalsIgnoreCase("GALLDOC") || tableName.equalsIgnoreCase("REM_GALLDOC") ||
+                tableName.equalsIgnoreCase("HOT_GALLDOC") || tableName.equalsIgnoreCase("HOT_GALLDOC")){
+            result = result + "if (current_user='DVREGDOC_USER') then  \n";
+            result = result + "      /*не надо логгировать*/\n";
+            result = result + "       exit;  /*не надо логгировать*/ \n";
+            result = result + "     end if;\n";
+        }
+
         result = result + "   idext_base=0; \n";
         result = result + "   idext_data_out=0; \n";
         result = result + "if (current_user='EXTUSER') then  \n";
@@ -53,6 +62,7 @@ public class InsertTriggerFunctionCreator {
         result = result + "  id_xtism=gen_id(GEN_XTISM_ID,1); \n";
         result = result + "  \n" ;
 
+
         result = result+"           insert into xtism (xtism.id_xtism,  \n";
         result = result+"                       xtism.operation_xtism ,   /*операция 1 вставка 2 изменение 3 удаление 4 отмена 5 проведение*/    \n";
         result = result+"                       xtism.type_object_xtism , /*тип объекта 1 справочник 2 документ 3 регистр*/  \n ";
@@ -64,7 +74,7 @@ public class InsertTriggerFunctionCreator {
         result = result+"                       xtism.idext_dataout_xtism)         /* id_data_out для квитанции при внешнем обновлении */   \n";
 
         result = result+"              values (id_xtism,  \n";
-        result = result+"                     1, \n ";
+        result = result+"                     2, \n ";
         result = result+"                    " + docType + ", \n";
         result = result+"                     '" + tableName + "', \n";
         result = result+"                     '" + nameFieldPk + "', \n";
@@ -75,49 +85,63 @@ public class InsertTriggerFunctionCreator {
 
         result = result+"	   \n ";
 
-        for (Map.Entry<String, String> entry : fieldsMap.entrySet()){
+        for (Map.Entry<String, String> entry : fieldsMap.entrySet()) {
             String fieldName = entry.getKey();
             String fieldType = entry.getValue();
+
             if(fieldName.equalsIgnoreCase("IDEXT_BASE_" + tableName)
                     || fieldName.equalsIgnoreCase("IDEXT_DOUT_" + tableName)){
                 continue;
             }
-            result = result + "if (not(new." + fieldName + " is null)) then  \n";
-            result = result + "   insert into xtism_fields (xtism_fields.idxtism_xtism_fields,  \n";
-            result = result + "                             xtism_fields.field_name_xtism_fields, \n";
-            result = result + "                             xtism_fields.old_value_xtism_fields, \n";
-            result = result + "                             xtism_fields.new_value_xtism_fields, \n";
-            result = result + "                             xtism_fields.type_xtism_fields) \n";
 
-            result = result + "                     values (id_xtism,  \n";
-            result = result + "                             '" + fieldName + "',\n";
+            result=result+"if ((old."+fieldName+" is null and new."+fieldName+" is not null) or  \n";
+            result=result+"  (new."+fieldName+" is null and old."+fieldName+" is not null) or  \n";
+            result=result+"  (new."+fieldName+" is not null and old."+fieldName+" is not null and  \n";
+            result=result+"   new."+fieldName+" <> old."+fieldName+" )) then  \n";
+
+            result=result+"   insert into xtism_fields (xtism_fields.idxtism_xtism_fields,  \n";
+            result=result+"                             xtism_fields.field_name_xtism_fields, \n";
+            result=result+"                             xtism_fields.old_value_xtism_fields, \n";
+            result=result+"                             xtism_fields.new_value_xtism_fields, \n";
+            result=result+"                             xtism_fields.type_xtism_fields) \n";
+            result=result+"                     values (id_xtism,  \n";
+            result=result+"                             '"+fieldName+"',\n";
 
             //старое значение
-            result = result + "                             null, \n";
-
-
-            //новое значение
-
             if (TableProperties.checkTypeFieldLongString(fieldType)){
                 //длинная строка
-                result=result + "                             null, \n";
-                result=result + "                             2); \n";      //тип поля
+                result=result+"                             null, \n";
+            }
+            else if (TableProperties.checkTypeFieldBlob(fieldType)){
+                //BLOB поле
+                result=result+"                             null, \n";
+            }
+            else
+            { //обычное поле
+                result=result+"                             old."+fieldName+", \n";
+            }
+
+            //новое поле
+            if (TableProperties.checkTypeFieldLongString(fieldType)){
+                //длинная строка
+                result=result+"                             null, \n";
+                result=result+"                             2); \n";
                 result=result + "end if;";
             }
             else if (TableProperties.checkTypeFieldBlob(fieldType)){
                 //BLOB поле
-                result=result + "                             null, \n";
-                result=result + "                             3); \n";      //тип поля
+                result=result+"                             null, \n";
+                result=result+"                             3); \n";
                 result=result + "end if;";
             }
             else
             { //обычное поле
-                result=result+"                             new." + fieldName + ", \n";
-                result=result+"                             1); \n";    //тип поля
+                result=result+"                             new."+fieldName+", \n";
+                result=result+"                             1); \n";
                 result=result + "end if;";
             }
-            result=result+"	   \n ";
 
+            result=result+"	   \n ";
         }
         result=result+"return new; \n";
         result=result+"end \n" +
